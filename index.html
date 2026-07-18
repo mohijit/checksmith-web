@@ -417,7 +417,7 @@
       for (let fileIdx = 0; fileIdx < 8; fileIdx++) {
         const file = flip ? 7 - fileIdx : fileIdx;
         const sq = FILES[file] + rank;
-        const isLight = (file + rank) % 2 === 1;
+        const isLight = (file + rank) % 2 === 0;
         const div = document.createElement("div");
         div.className = "sq " + (isLight ? "light" : "dark");
         div.dataset.sq = sq;
