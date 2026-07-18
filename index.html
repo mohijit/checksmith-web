@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checksmith</title>
+<meta name="description" content="Play chess against Checksmith, a Rust chess engine, running entirely in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111318'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='18' fill='%23e8e6df' text-anchor='middle'%3E♞%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --border: #e4e1d8;
+    --text: #16181d;
+    --text-dim: #55584f;
+    --text-faint: #8b8d82;
+    --accent: #1f6f5c;
+    --live: #1f8a4c;
+    --dev: #a5731f;
+    --bear: #b3432b;
+
+    --sq-light: #eae7dd;
+    --sq-dark: #b9ac96;
+    --sq-select: #f0d878;
+    --sq-move: #8fbf8f;
+    --piece-white-bg: #fbfaf6;
+    --piece-white-fg: #16181d;
+    --piece-black-bg: #262620;
+    --piece-black-fg: #f2f0e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1013;
+      --surface: #16181d;
+      --border: #262922;
+      --text: #eeece4;
+      --text-dim: #a9ab9f;
+      --text-faint: #6f7268;
+      --accent: #6fbfa8;
+      --live: #4ade80;
+      --dev: #e2ac54;
+      --bear: #e2735a;
+
+      --sq-light: #3a3d33;
+      --sq-dark: #24261f;
+      --sq-select: #a58a2e;
+      --sq-move: #3f6b4a;
+      --piece-white-bg: #eeece4;
+      --piece-white-fg: #16181d;
+      --piece-black-bg: #0c0d0a;
+      --piece-black-fg: #eeece4;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    padding: 6vh 20px 8vh;
+  }
+  main {
+    width: 100%;
+    max-width: 900px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .tagline {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin: 4px 0 0;
+  }
+  header a {
+    font-size: 12px;
+    color: var(--text-faint);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  header a:hover { color: var(--text); border-bottom-color: var(--text-faint); }
+
+  .layout {
+    display: flex;
+    gap: 28px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .board-col {
+    flex: 0 0 auto;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(8, min(9.5vw, 62px));
+    grid-template-rows: repeat(8, min(9.5vw, 62px));
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .sq {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .sq.light { background: var(--sq-light); }
+  .sq.dark { background: var(--sq-dark); }
+  .sq.selected::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--sq-select);
+    opacity: 0.65;
+  }
+  .sq.legal::after {
+    content: "";
+    position: absolute;
+    width: 28%;
+    height: 28%;
+    border-radius: 50%;
+    background: var(--sq-move);
+    opacity: 0.75;
+  }
+  .sq.legal.has-piece::after {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    background: transparent;
+    border: 3px solid var(--sq-move);
+    opacity: 0.8;
+    box-sizing: border-box;
+  }
+  .sq.last-move { box-shadow: inset 0 0 0 3px var(--accent); }
+  .piece {
+    width: 78%;
+    height: 78%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: min(4.6vw, 30px);
+    font-weight: 700;
+    font-family: Georgia, "Times New Roman", serif;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .piece.w { background: var(--piece-white-bg); color: var(--piece-white-fg); border: 1px solid rgba(0,0,0,0.15); }
+  .piece.b { background: var(--piece-black-bg); color: var(--piece-black-fg); border: 1px solid rgba(0,0,0,0.4); }
+
+  .side-col {
+    flex: 1 1 260px;
+    min-width: 260px;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 10px;
+  }
+  .status {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .status-sub {
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 9px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+  button.active { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:disabled:hover { border-color: var(--border); }
+
+  .diff-row { display: flex; gap: 6px; }
+  .diff-row button { flex: 1; }
+  .diff-note { font-size: 10.5px; color: var(--text-faint); margin-top: 8px; line-height: 1.5; }
+
+  .movelist {
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .movelist-row { display: flex; gap: 8px; padding: 3px 0; }
+  .movelist-num { color: var(--text-faint); width: 22px; flex-shrink: 0; }
+  .movelist-move { flex: 1; }
+  .movelist-empty { color: var(--text-faint); font-size: 12px; }
+
+  .nnue-progress {
+    margin-top: 10px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    overflow: hidden;
+    display: none;
+  }
+  .nnue-progress.show { display: block; }
+  .nnue-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.15s ease;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .overlay.show { display: flex; }
+  .promo-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    gap: 10px;
+  }
+  .promo-box .piece { position: static; width: 48px; height: 48px; font-size: 24px; cursor: pointer; }
+  .color-pick {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    text-align: center;
+  }
+  .color-pick .btn-row { justify-content: center; margin-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Checksmith</h1>
+      <p class="tagline">A chess engine written from scratch in Rust, running in your browser via WebAssembly.</p>
+    </div>
+    <a href="https://mohijitsingh.com">← mohijitsingh.com</a>
+  </header>
+
+  <div class="layout">
+    <div class="board-col">
+      <div class="board" id="board"></div>
+    </div>
+    <div class="side-col">
+      <div class="card">
+        <div class="status" id="status">Loading engine…</div>
+        <div class="status-sub" id="status-sub"></div>
+        <div class="nnue-progress" id="nnue-progress"><div class="nnue-progress-bar" id="nnue-progress-bar"></div></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Difficulty</div>
+        <div class="diff-row" id="diff-row">
+          <button data-diff="quick">Quick</button>
+          <button data-diff="normal" class="active">Normal</button>
+          <button data-diff="strong">Strong</button>
+        </div>
+        <div class="diff-note" id="diff-note">Normal: fast evaluator, ~1.5s per move.</div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Game</div>
+        <div class="btn-row">
+          <button id="btn-new">New game</button>
+          <button id="btn-resign" disabled>Resign</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Moves</div>
+        <div class="movelist" id="movelist"><div class="movelist-empty">No moves yet.</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="overlay" id="color-overlay">
+  <div class="color-pick">
+    <div class="section-label">Play as</div>
+    <div class="btn-row">
+      <button class="primary" id="pick-white">White</button>
+      <button class="primary" id="pick-black">Black</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="promo-overlay">
+  <div class="promo-box" id="promo-box"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const PIECE_LETTER = { p: "P", n: "N", b: "B", r: "R", q: "Q", k: "K" };
+  const FILES = ["a","b","c","d","e","f","g","h"];
+
+  const state = {
+    fen: null,
+    turn: "white",
+    legalMoves: [],
+    playerColor: "white",
+    selected: null,
+    gameOver: false,
+    result: null, // "checkmate" | "stalemate" | "draw" | "resigned" | null
+    difficulty: "normal",
+    nnueReady: false,
+    requestId: 0,
+    pending: new Map(),
+    engineThinking: false,
+    boardStarted: false,
+  };
+
+  const DIFF = {
+    quick:  { movetimeMs: 300,  useNnue: false, label: "Quick: fast evaluator, ~0.3s per move." },
+    normal: { movetimeMs: 1500, useNnue: false, label: "Normal: fast evaluator, ~1.5s per move." },
+    strong: { movetimeMs: 3000, useNnue: true,  label: "Strong: neural network evaluator (loads ~40MB on first use), ~3s per move." },
+  };
+
+  // ---------- worker plumbing ----------
+
+  const worker = new Worker("./worker.js", { type: "module" });
+  worker.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.id !== undefined) {
+      const p = state.pending.get(msg.id);
+      if (!p) return;
+      state.pending.delete(msg.id);
+      if (msg.ok) p.resolve(msg.result); else p.reject(new Error(msg.error));
+    } else if (msg.type === "nnueProgress") {
+      onNnueProgress(msg.loaded, msg.total);
+    } else if (msg.type === "nnueLoaded") {
+      onNnueLoaded(msg.ok);
+    }
+  };
+  function call(cmd, args) {
+    return new Promise((resolve, reject) => {
+      const id = ++state.requestId;
+      state.pending.set(id, { resolve, reject });
+      worker.postMessage({ id, cmd, args });
+    });
+  }
+
+  // ---------- FEN parsing (board only; engine is the rules authority) ----------
+
+  function parseFenBoard(fen) {
+    const rows = fen.split(" ")[0].split("/");
+    const board = {};
+    for (let r = 0; r < 8; r++) {
+      let file = 0;
+      for (const ch of rows[r]) {
+        if (/\d/.test(ch)) { file += Number(ch); continue; }
+        const sq = FILES[file] + (8 - r);
+        board[sq] = { type: ch.toLowerCase(), color: ch === ch.toUpperCase() ? "w" : "b" };
+        file++;
+      }
+    }
+    return board;
+  }
+
+  // ---------- rendering ----------
+
+  const boardEl = document.getElementById("board");
+  let lastMoveSquares = [];
+
+  function renderBoard() {
+    const board = parseFenBoard(state.fen);
+    const flip = state.playerColor === "black";
+    const legalTargets = state.selected ? legalDestinations(state.selected) : [];
+    boardEl.innerHTML = "";
+    for (let rankIdx = 0; rankIdx < 8; rankIdx++) {
+      const rank = flip ? rankIdx + 1 : 8 - rankIdx;
+      for (let fileIdx = 0; fileIdx < 8; fileIdx++) {
+        const file = flip ? 7 - fileIdx : fileIdx;
+        const sq = FILES[file] + rank;
+        const isLight = (file + rank) % 2 === 1;
+        const div = document.createElement("div");
+        div.className = "sq " + (isLight ? "light" : "dark");
+        div.dataset.sq = sq;
+        if (sq === state.selected) div.classList.add("selected");
+        if (lastMoveSquares.includes(sq)) div.classList.add("last-move");
+        if (legalTargets.includes(sq)) {
+          div.classList.add("legal");
+          if (board[sq]) div.classList.add("has-piece");
+        }
+        const piece = board[sq];
+        if (piece) {
+          const p = document.createElement("div");
+          p.className = "piece " + piece.color;
+          p.textContent = PIECE_LETTER[piece.type];
+          div.appendChild(p);
+        }
+        div.addEventListener("click", onSquareClick);
+        boardEl.appendChild(div);
+      }
+    }
+  }
+
+  function legalDestinations(fromSq) {
+    return state.legalMoves
+      .filter((m) => m.slice(0, 2) === fromSq)
+      .map((m) => m.slice(2, 4));
+  }
+
+  function setStatus(text, sub) {
+    document.getElementById("status").textContent = text;
+    document.getElementById("status-sub").textContent = sub || "";
+  }
+
+  function renderMoveList(history) {
+    const el = document.getElementById("movelist");
+    if (history.length === 0) {
+      el.innerHTML = '<div class="movelist-empty">No moves yet.</div>';
+      return;
+    }
+    el.innerHTML = "";
+    for (let i = 0; i < history.length; i += 2) {
+      const row = document.createElement("div");
+      row.className = "movelist-row";
+      const num = document.createElement("div");
+      num.className = "movelist-num";
+      num.textContent = (i / 2 + 1) + ".";
+      row.appendChild(num);
+      const w = document.createElement("div");
+      w.className = "movelist-move";
+      w.textContent = history[i] || "";
+      row.appendChild(w);
+      const b = document.createElement("div");
+      b.className = "movelist-move";
+      b.textContent = history[i + 1] || "";
+      row.appendChild(b);
+      el.appendChild(row);
+    }
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ---------- nnue progress UI ----------
+
+  function onNnueProgress(loaded, total) {
+    const bar = document.getElementById("nnue-progress");
+    const fill = document.getElementById("nnue-progress-bar");
+    bar.classList.add("show");
+    if (total) fill.style.width = Math.min(100, (loaded / total) * 100) + "%";
+  }
+  function onNnueLoaded(ok) {
+    state.nnueReady = ok;
+    document.getElementById("nnue-progress").classList.remove("show");
+  }
+
+  // ---------- move history (SAN) ----------
+
+  const sanHistory = [];
+
+  // ---------- game flow ----------
+
+  async function startGame(color) {
+    document.getElementById("color-overlay").classList.remove("show");
+    state.playerColor = color;
+    state.selected = null;
+    state.gameOver = false;
+    state.result = null;
+    lastMoveSquares = [];
+    sanHistory.length = 0;
+    document.getElementById("btn-resign").disabled = false;
+    const r = await call("newGame", {});
+    applyStateSnapshot(r);
+    renderMoveList(sanHistory);
+    setStatus(state.playerColor === "white" ? "Your move" : "Engine is thinking…", "You're playing " + state.playerColor + ".");
+    renderBoard();
+    if (state.playerColor === "black") {
+      await engineTurn();
+    }
+  }
+
+  function applyStateSnapshot(r) {
+    state.fen = r.fen;
+    state.turn = r.turn;
+    state.legalMoves = r.legalMoves;
+  }
+
+  function checkGameOver(r) {
+    if (r.isCheckmate) {
+      state.gameOver = true;
+      state.result = "checkmate";
+      const winner = r.turn === "white" ? "black" : "white"; // side to move is the one mated
+      setStatus("Checkmate", winner === state.playerColor ? "You win!" : "Checksmith wins.");
+      return true;
+    }
+    if (r.isStalemate) {
+      state.gameOver = true;
+      state.result = "stalemate";
+      setStatus("Stalemate", "Draw — the side to move has no legal moves.");
+      return true;
+    }
+    if (r.isDraw) {
+      state.gameOver = true;
+      state.result = "draw";
+      setStatus("Draw", "Insufficient material, fifty-move rule, or threefold repetition.");
+      return true;
+    }
+    return false;
+  }
+
+  async function onPlayerMove(uci) {
+    let r;
+    try {
+      r = await call("playerMove", { uci });
+    } catch (err) {
+      console.error(err);
+      return;
+    }
+    if (!r.ok) return; // illegal, ignore
+    applyStateSnapshot(r);
+    sanHistory.push(r.san);
+    lastMoveSquares = [uci.slice(0, 2), uci.slice(2, 4)];
+    state.selected = null;
+    renderMoveList(sanHistory);
+    renderBoard();
+    if (checkGameOver(r)) return;
+    setStatus("Engine is thinking…", "");
+    await engineTurn();
+  }
+
+  async function engineTurn() {
+    state.engineThinking = true;
+    setDiffButtonsDisabled(true);
+    const diff = DIFF[state.difficulty];
+    let r;
+    try {
+      r = await call("engineMove", { movetimeMs: diff.movetimeMs, useNnue: diff.useNnue });
+    } catch (err) {
+      console.error(err);
+      state.engineThinking = false;
+      setDiffButtonsDisabled(false);
+      return;
+    }
+    state.engineThinking = false;
+    setDiffButtonsDisabled(false);
+    if (!r.ok) { setStatus("Engine has no legal move", ""); return; }
+    applyStateSnapshot(r);
+    sanHistory.push(r.san);
+    lastMoveSquares = [r.uci.slice(0, 2), r.uci.slice(2, 4)];
+    renderMoveList(sanHistory);
+    renderBoard();
+    if (checkGameOver(r)) return;
+    setStatus("Your move", diff.useNnue && !r.nnueUsed ? "Strong mode is still loading — played on Quick strength instead." : "");
+  }
+
+  function setDiffButtonsDisabled(disabled) {
+    document.querySelectorAll("#diff-row button").forEach((b) => (b.disabled = disabled));
+    document.getElementById("btn-new").disabled = disabled;
+  }
+
+  // ---------- promotion picker ----------
+
+  function maybePromotionMoves(fromSq, toSq) {
+    return state.legalMoves.filter((m) => m.slice(0, 2) === fromSq && m.slice(2, 4) === toSq && m.length === 5);
+  }
+
+  function showPromotionPicker(fromSq, toSq, color) {
+    const box = document.getElementById("promo-box");
+    box.innerHTML = "";
+    const order = ["q", "r", "b", "n"];
+    for (const letter of order) {
+      const p = document.createElement("div");
+      p.className = "piece " + color;
+      p.textContent = PIECE_LETTER[letter];
+      p.addEventListener("click", () => {
+        document.getElementById("promo-overlay").classList.remove("show");
+        onPlayerMove(fromSq + toSq + letter);
+      });
+      box.appendChild(p);
+    }
+    document.getElementById("promo-overlay").classList.add("show");
+  }
+
+  // ---------- input handling ----------
+
+  function onSquareClick(e) {
+    if (state.gameOver || state.engineThinking) return;
+    if (state.turn !== state.playerColor) return;
+    const sq = e.currentTarget.dataset.sq;
+    const board = parseFenBoard(state.fen);
+
+    if (state.selected) {
+      const dests = legalDestinations(state.selected);
+      if (dests.includes(sq)) {
+        const promos = maybePromotionMoves(state.selected, sq);
+        if (promos.length > 1) {
+          const piece = board[state.selected];
+          showPromotionPicker(state.selected, sq, piece.color);
+        } else {
+          onPlayerMove(state.selected + sq);
+        }
+        return;
+      }
+      if (sq === state.selected) { state.selected = null; renderBoard(); return; }
+    }
+
+    const piece = board[sq];
+    if (piece && piece.color === (state.playerColor === "white" ? "w" : "b")) {
+      state.selected = sq;
+    } else {
+      state.selected = null;
+    }
+    renderBoard();
+  }
+
+  // ---------- difficulty / controls ----------
+
+  document.getElementById("diff-row").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-diff]");
+    if (!btn) return;
+    state.difficulty = btn.dataset.diff;
+    document.querySelectorAll("#diff-row button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("diff-note").textContent = DIFF[state.difficulty].label;
+  });
+
+  document.getElementById("btn-new").addEventListener("click", () => {
+    document.getElementById("color-overlay").classList.add("show");
+  });
+  document.getElementById("btn-resign").addEventListener("click", () => {
+    if (state.gameOver) return;
+    state.gameOver = true;
+    state.result = "resigned";
+    setStatus("You resigned", "Start a new game whenever you're ready.");
+  });
+  document.getElementById("pick-white").addEventListener("click", () => startGame("white"));
+  document.getElementById("pick-black").addEventListener("click", () => startGame("black"));
+
+  // ---------- boot ----------
+
+  (async function boot() {
+    const r = await call("init", {});
+    applyStateSnapshot(r);
+    renderBoard();
+    document.getElementById("color-overlay").classList.add("show");
+    setStatus("Choose a side to begin", "");
+  })();
+})();
+</script>
+</body>
+</html>

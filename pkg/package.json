@@ -1,0 +1,15 @@
+{
+  "name": "checksmith-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "checksmith_wasm_bg.wasm",
+    "checksmith_wasm.js",
+    "checksmith_wasm.d.ts"
+  ],
+  "main": "checksmith_wasm.js",
+  "types": "checksmith_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
